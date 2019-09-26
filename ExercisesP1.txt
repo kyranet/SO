@@ -1,0 +1,7 @@
+Ejercicio 1:
+a)
+gcc show_file.c -o show_file
+b)
+gcc -c -Wall show_file.c -o show_file.o
+gcc -g show_file.o -o show_file
+
