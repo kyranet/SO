@@ -300,14 +300,53 @@ int updateSuperBlock(MyFileSystem *myFileSystem)
 
 int readBitmap(MyFileSystem *myFileSystem)
 {
-    return -1;
+    if(lseek(myFileSystem->fdVirtualDisk, BLOCK_SIZE_BYTES * BITMAP_IDX, SEEK_SET) == (off_t) - 1) {
+        perror("Failed lseek in readBitmap");
+        return -1;
+    }
+
+    print("BITMAP INDEX: %d\n", BITMAP_IDX);
+    print("SUPERBLOCK INDEX: %d\n", SUPERBLOCK_IDX);
+    print("DIRECTORY INDEX: %d\n", DIRECTORY_IDX);
+
+    /*for (int i = 3; i < 3 + MAX_BLOCKS_WITH_NODES; i++) {
+        print("Node in block: %d", i);
+    }*/
+
+    for (int i = 0; i < NUM_BITS; i++) {
+        read(myFileSystem->fdVirtualDisk, &myFileSystem->bitMap[i], sizeof(BIT));
+        if(myFileSystem->bitMap[i] == 1)
+            prinf("Bitmap position: %d -> %d\n", i, myFileSystem->bitMap[i]);
+    }  
+    return 0;
 }
 
 
 
 int readDirectory(MyFileSystem* myFileSystem)
 {
-    return -1;
+   if(lseek(myFileSystem->fdVirtualDisk, BLOCK_SIZE_BYTES * 2, SEEK_SET) == (off_t) - 1) {
+		perror("Failed lseek in readDirectory");
+		return -1;
+	}
+
+    printf("Reading number of files...\n");
+	if(read(myFileSystem->fdVirtualDisk, &myFileSystem->directory.numFiles, sizeof(int))== -1 ){
+		perror("Failed reading numFiles in readDirectory");
+		return -1;
+	}
+	printf("Number of Files: %d\n", &myFileSystem->directory.numFiles);
+	
+    printf("Reading files...\n");
+	for (int i = 0; i < MAX_FILES_PER_DIRECTORY; i++){
+		if(read(myFileSystem->fdVirtualDisk, &myFileSystem->directory.files[i], sizeof(FileStruct)) != sizeof(FileStruct)){
+			perror("Failed reading files in readDirectory");
+			return -1;
+		}
+	}
+    prinf("All files readed succesfully\n");
+	
+	return 0;
 }
 
 
