@@ -174,7 +174,7 @@ static int my_getattr(const char *path, struct stat *stbuf) {
         node = myFileSystem.nodes[myFileSystem.directory.files[idxDir].nodeIdx];
         stbuf->st_size = node->fileSize;
         stbuf->st_mode = S_IFREG | 0644;
-        stbuf->st_nlink = 1;
+        stbuf->st_nlink = node->nlinks;
         stbuf->st_uid = getuid();
         stbuf->st_gid = getgid();
         stbuf->st_mtime = stbuf->st_ctime = node->modificationTime;
@@ -414,6 +414,7 @@ static int my_mknod(const char *path, mode_t mode, dev_t device) {
     myFileSystem.nodes[idxNodoI]->numBlocks = 0;
     myFileSystem.nodes[idxNodoI]->modificationTime = time(NULL);
     myFileSystem.nodes[idxNodoI]->freeNode = false;
+    myFileSystem.nodes[idxNodoI]->nlinks = 1;
 
     reserveBlocksForNodes(&myFileSystem, myFileSystem.nodes[idxNodoI]->blocks, 0);
 
@@ -461,24 +462,30 @@ static int my_unlink(const char *path) {
     int idxDir, idxNode;
     if ((idxDir = findFileByName(&myFileSystem, (char *)path + 1)) == -1)
         return -ENOENT;
-        idxNode = myFileSystem.directory.files[idxDir].nodeIdx;
-    if (resizeNode(idxNode, 0) < 0)
-        return -EIO;
 
-    myFileSystem.directory.files[idxDir].freeFile = true;
-    myFileSystem.directory.numFiles--;
+    idxNode = myFileSystem.directory.files[idxDir].nodeIdx;
 
-    myFileSystem.numFreeNodes++;
-    myFileSystem.nodes[idxNode]->freeNode = true;
+    int nLinks = --myFileSystem.nodes[idxNode]->nlinks;
 
-    updateDirectory(&myFileSystem);
-    updateNode(&myFileSystem, idxNode, myFileSystem.nodes[idxNode]);
+    if(!nLinks){
 
-    free(myFileSystem.nodes[idxNode]);
-    myFileSystem.nodes[idxNode] = NULL;
-    //updateBitmap(&myFileSystem);
+        if (resizeNode(idxNode, 0) < 0)
+            return -EIO;
 
-    sync();
+        myFileSystem.directory.files[idxDir].freeFile = true;
+        myFileSystem.directory.numFiles--;
+
+        myFileSystem.numFreeNodes++;
+        myFileSystem.nodes[idxNode]->freeNode = true;
+
+        updateDirectory(&myFileSystem);
+        updateNode(&myFileSystem, idxNode, myFileSystem.nodes[idxNode]);
+
+        free(myFileSystem.nodes[idxNode]);
+        myFileSystem.nodes[idxNode] = NULL;
+
+        //updateBitmap(&myFileSystem);
+    }
     return 0;
 }
 
@@ -526,11 +533,16 @@ static int my_read(const char *path, char *buf, size_t size, off_t offset, struc
         for (i = offBlock; (i < BLOCK_SIZE_BYTES) && (totalRead < bytes2Read); i++)
             buf[totalRead++] = buffer[i];
 
-        //actualizar offset y totalRead(que se actuliza en el incremento)
+        //actualizar offset y totalRead(que se actualiza en el incremento)
         offset += i;
     }
     return totalRead;
 }
+
+int my_link(const char *path, const char *lpath){
+
+}
+
 
 struct fuse_operations myFS_operations = {
     .getattr = my_getattr,   // Obtain attributes from a file
@@ -543,4 +555,6 @@ struct fuse_operations myFS_operations = {
 
     .unlink = my_unlink, // Removes a file
     .read = my_read,     // Reads data from an opened file
+
+    .link = my_link,
 };
