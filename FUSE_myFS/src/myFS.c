@@ -14,7 +14,7 @@ void copyNode(NodeStruct *dest, NodeStruct *src)
     dest->fileSize = src->fileSize;
     dest->modificationTime = src->modificationTime;
     dest->freeNode = src->freeNode;
-    dest->nlinks = src->nlinks;
+    dest->type = src->type;
 
     for(i = 0; i < MAX_BLOCKS_PER_FILE; i++)
         dest->blocks[i] = src->blocks[i];
@@ -306,9 +306,9 @@ int readBitmap(MyFileSystem *myFileSystem)
         return -1;
     }
 
-    print("BITMAP INDEX: %d\n", BITMAP_IDX);
-    print("SUPERBLOCK INDEX: %d\n", SUPERBLOCK_IDX);
-    print("DIRECTORY INDEX: %d\n", DIRECTORY_IDX);
+    printf("BITMAP INDEX: %d\n", BITMAP_IDX);
+    printf("SUPERBLOCK INDEX: %d\n", SUPERBLOCK_IDX);
+    printf("DIRECTORY INDEX: %d\n", DIRECTORY_IDX);
 
     /*for (int i = 3; i < 3 + MAX_BLOCKS_WITH_NODES; i++) {
         print("Node in block: %d", i);
@@ -317,7 +317,7 @@ int readBitmap(MyFileSystem *myFileSystem)
     for (int i = 0; i < NUM_BITS; i++) {
         read(myFileSystem->fdVirtualDisk, &myFileSystem->bitMap[i], sizeof(BIT));
         if(myFileSystem->bitMap[i] == 1)
-            prinf("Bitmap position: %d -> %d\n", i, myFileSystem->bitMap[i]);
+            printf("Bitmap position: %d -> %d\n", i, myFileSystem->bitMap[i]);
     }  
     return 0;
 }
@@ -336,7 +336,7 @@ int readDirectory(MyFileSystem* myFileSystem)
 		perror("Failed reading numFiles in readDirectory");
 		return -1;
 	}
-	printf("Number of Files: %d\n", &myFileSystem->directory.numFiles);
+	printf("Number of Files: %d\n", myFileSystem->directory.numFiles);
 	
     printf("Reading files...\n");
 	for (int i = 0; i < MAX_FILES_PER_DIRECTORY; i++){
@@ -345,7 +345,7 @@ int readDirectory(MyFileSystem* myFileSystem)
 			return -1;
 		}
 	}
-    prinf("All files readed succesfully\n");
+    printf("All files readed succesfully\n");
 	
 	return 0;
 }

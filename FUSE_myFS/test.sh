@@ -15,6 +15,7 @@ echo "Copying myFS.h"
 read -p "Press enter..."
 
 ls -la $MPOINT
+././my-fsck ./virtual-disk
 diff -y ./src/fuseLib.c $MPOINT/fuseLib.c
 diff -y ./src/myFS.h $MPOINT/myFS.h
 
@@ -24,6 +25,7 @@ echo "fuseLib.c truncated"
 read -p "Press enter..."
 
 ls -la $MPOINT
+././my-fsck ./virtual-disk
 diff -y ./src/fuseLib.c $MPOINT/fuseLib.c
 read -p "Press enter..."
 
@@ -33,6 +35,7 @@ cp ./temp/MyFileSystem.c $MPOINT/MyFileSystem.c
 read -p "Press enter..."
 
 ls -la $MPOINT
+././my-fsck ./virtual-disk
 diff -y ./src/MyFileSystem.c $MPOINT/MyFileSystem.c
 read -p "Press enter..."
 
@@ -42,5 +45,15 @@ echo "myFS.h truncated"
 read -p "Press enter..."
 
 ls -la $MPOINT
+././my-fsck ./virtual-disk
 diff -y ./src/myFS.h $MPOINT/myFS.h
+read -p "Press enter..."
+
+echo "Making link fuseLib.lnk to fuseLib.c"
+ln -s /fuseLib.c $MPOINT/fuseLib.lnk
+ls -la $MPOINT
+././my-fsck ./virtual-disk
+read -p "Press enter..."
+
+diff -y $MPOINT/fuseLib.lnk $MPOINT/fuseLib.c
 read -p "Press enter..."

@@ -173,8 +173,7 @@ static int my_getattr(const char *path, struct stat *stbuf) {
     if ((idxDir = findFileByName(&myFileSystem, (char *)path + 1)) != -1) {
         node = myFileSystem.nodes[myFileSystem.directory.files[idxDir].nodeIdx];
         stbuf->st_size = node->fileSize;
-        stbuf->st_mode = S_IFREG | 0644;
-        stbuf->st_nlink = node->nlinks;
+        stbuf->st_mode = (node->type == Regular ? S_IFREG | 0644 : S_IFLNK | 0777);
         stbuf->st_uid = getuid();
         stbuf->st_gid = getgid();
         stbuf->st_mtime = stbuf->st_ctime = node->modificationTime;
@@ -414,7 +413,7 @@ static int my_mknod(const char *path, mode_t mode, dev_t device) {
     myFileSystem.nodes[idxNodoI]->numBlocks = 0;
     myFileSystem.nodes[idxNodoI]->modificationTime = time(NULL);
     myFileSystem.nodes[idxNodoI]->freeNode = false;
-    myFileSystem.nodes[idxNodoI]->nlinks = 1;
+    myFileSystem.nodes[idxNodoI]->type = Regular;
 
     reserveBlocksForNodes(&myFileSystem, myFileSystem.nodes[idxNodoI]->blocks, 0);
 
@@ -457,7 +456,7 @@ static int my_truncate(const char *path, off_t size) {
 //     Liberar la memoria del nodo-i y actualizar la tabla
 
 static int my_unlink(const char *path) {
-    fprintf(stderr, "--->>>my_link: path %s\n", path);
+    fprintf(stderr, "--->>>my_unlink: path %s\n", path);
 
     int idxDir, idxNode;
     if ((idxDir = findFileByName(&myFileSystem, (char *)path + 1)) == -1)
@@ -465,27 +464,21 @@ static int my_unlink(const char *path) {
 
     idxNode = myFileSystem.directory.files[idxDir].nodeIdx;
 
-    int nLinks = --myFileSystem.nodes[idxNode]->nlinks;
+    if (resizeNode(idxNode, 0) < 0)
+        return -EIO;
 
-    if(!nLinks){
+    myFileSystem.directory.files[idxDir].freeFile = true;
+    myFileSystem.directory.numFiles--;
 
-        if (resizeNode(idxNode, 0) < 0)
-            return -EIO;
+    myFileSystem.numFreeNodes++;
+    myFileSystem.nodes[idxNode]->freeNode = true;
 
-        myFileSystem.directory.files[idxDir].freeFile = true;
-        myFileSystem.directory.numFiles--;
+    updateDirectory(&myFileSystem);
+    updateNode(&myFileSystem, idxNode, myFileSystem.nodes[idxNode]);
 
-        myFileSystem.numFreeNodes++;
-        myFileSystem.nodes[idxNode]->freeNode = true;
+    free(myFileSystem.nodes[idxNode]);
+    myFileSystem.nodes[idxNode] = NULL;
 
-        updateDirectory(&myFileSystem);
-        updateNode(&myFileSystem, idxNode, myFileSystem.nodes[idxNode]);
-
-        free(myFileSystem.nodes[idxNode]);
-        myFileSystem.nodes[idxNode] = NULL;
-
-        //updateBitmap(&myFileSystem);
-    }
     return 0;
 }
 
@@ -539,8 +532,122 @@ static int my_read(const char *path, char *buf, size_t size, off_t offset, struc
     return totalRead;
 }
 
-int my_link(const char *path, const char *lpath){
+/**
+ * @brief Delete a file
+ *
+ * @param path file path
+ * @return 0 on success and <0 on error
+ **/
+static int my_unlink(const char *path);
+/* COMPLETAR: sustituir por el vuestro */
 
+/**
+ * @brief Create a symbolic lin
+ *
+ * Help from FUSE:
+ *
+ *
+ * @param path file path of the pointed at file
+ * @param lpath path of the symbolic link itself
+ * @return 0 on success and <0 on error
+ **/
+static int my_symlink(const char *path, const char *lpath)
+{
+	struct fuse_file_info fi;
+	char *lname = (char *)lpath + 1;
+	//int ret;
+
+	// 1. Check if the length of the file name is correct
+	if (strlen(path + 1) > myFileSystem.superBlock.maxLenFileName) {
+		return -ENAMETOOLONG;
+	}
+
+	// 2. Check if we have at least one free i-node
+	if (myFileSystem.numFreeNodes <= 0) {
+		return -ENOSPC;
+	}
+
+	// 3. Check whether we have at least one free entry in the directory
+	if (myFileSystem.directory.numFiles >= MAX_FILES_PER_DIRECTORY) {
+		return -ENOSPC;
+	}
+
+	// 4. Check that no file with the name lpath exists
+	if (findFileByName(&myFileSystem, (char *)lpath + 1) != -1) {
+		return -EEXIST;
+	}
+
+	int idxNodoI, idxDir;
+	// 5. Reserve a free i-node (findFreeNode) and an entry in the directory
+	//    (findFreeFile). Return with error if one of them cannot be
+	//	  reserved.
+	if ((idxNodoI = findFreeNode(&myFileSystem)) == -1 || (idxDir = findFreeFile(&myFileSystem)) == -1) {
+		return -ENOSPC;
+	}
+
+	// 6. Fill in the directory entry
+	myFileSystem.directory.files[idxDir].freeFile = false;
+    myFileSystem.directory.numFiles++;
+    strcpy(myFileSystem.directory.files[idxDir].fileName, lname);
+    myFileSystem.directory.files[idxDir].nodeIdx = idxNodoI;
+	myFileSystem.numFreeNodes--;
+
+	if (myFileSystem.nodes[idxNodoI] == NULL)
+		myFileSystem.nodes[idxNodoI] = malloc(sizeof(NodeStruct));
+	// 7. Fill in the fields of the new inode
+	myFileSystem.nodes[idxNodoI]->fileSize = 0;
+    myFileSystem.nodes[idxNodoI]->numBlocks = 0;
+    myFileSystem.nodes[idxNodoI]->modificationTime = time(NULL);
+    myFileSystem.nodes[idxNodoI]->freeNode = false;
+    myFileSystem.nodes[idxNodoI]->type = SymLink;
+
+    reserveBlocksForNodes(&myFileSystem, myFileSystem.nodes[idxNodoI]->blocks, 0);
+
+	updateDirectory(&myFileSystem);
+	updateNode(&myFileSystem, idxNodoI, myFileSystem.nodes[idxNodoI]);
+
+	fi.fh = idxNodoI;
+	// 8. Use my_write to write the name of the pointed file (path) in the
+	//    symlink
+	my_write(lpath, (char *) path + 1, strlen((char *) path + 1), 0, &fi);
+
+	return 0;
+}
+
+static int my_readlink(const char *path, char *buff, size_t size)
+{
+	int idxDir;
+	int n;
+	int len;
+	struct fuse_file_info fi;
+
+	// 1. Buscar el fichero por nombre (path)
+	if((idxDir = findFileByName(&myFileSystem, (char *)path + 1)) == -1) {
+		return -ENOENT;
+	}
+	// 2. Obtener su nodo-i
+	n = myFileSystem.directory.files[idxDir].nodeIdx;
+
+	// 3. Comprobar que es un enlace simbólico
+	if (myFileSystem.nodes[n]->type != SymLink){
+		return -EINVAL;
+    }
+	fi.fh = n;
+
+	// 4. Usando my_read, escribir el nombre del fichero apuntado en el buffer
+	// buff
+	if ((len = my_read(path, buff, myFileSystem.nodes[n]->fileSize, 0, &fi)) < 0) {
+		return len;
+    }
+
+	if (len == size) {
+		buff[size - 1] = '\0';
+    }
+    else if (len < size) {
+        buff[len] = '\0';
+    }
+
+	return 0;
 }
 
 
@@ -556,5 +663,6 @@ struct fuse_operations myFS_operations = {
     .unlink = my_unlink, // Removes a file
     .read = my_read,     // Reads data from an opened file
 
-    .link = my_link,
+    .readlink   = my_readlink,
+	.symlink    = my_symlink,
 };
